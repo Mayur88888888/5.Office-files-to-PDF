@@ -1,74 +1,32 @@
 Attribute VB_Name = "Module1"
-
 Option Explicit
 
+' Global FileSystemObject for reuse
 Dim fso As Object
 
-Sub ConvertFilesToPDF()
-    Dim inputFolder As String, outputFolder As String
+' Main sub called by UserForm
+Public Sub ConvertFilesToPDF(inputFolder As String, outputFolder As String, _
+                             convertExcel As Boolean, convertWord As Boolean, convertPPT As Boolean, _
+                             frm As Object)
     Dim selectedTypes As Collection
-    Dim answer As String
-    
     Set fso = CreateObject("Scripting.FileSystemObject")
-    
-    ' Select input folder
-    With Application.FileDialog(msoFileDialogFolderPicker)
-        .Title = "Select Folder Containing Files to Convert"
-        If .Show <> -1 Then Exit Sub
-        inputFolder = .SelectedItems(1)
-    End With
-    
-    ' Select output folder
-    With Application.FileDialog(msoFileDialogFolderPicker)
-        .Title = "Select Folder to Save PDFs"
-        If .Show <> -1 Then Exit Sub
-        outputFolder = .SelectedItems(1)
-    End With
+    Set selectedTypes = New Collection
     
     If Right(inputFolder, 1) <> "\" Then inputFolder = inputFolder & "\"
     If Right(outputFolder, 1) <> "\" Then outputFolder = outputFolder & "\"
     
-    ' Ask which file types to convert
-    Set selectedTypes = New Collection
-    answer = MsgBox("Convert Excel files? (Yes = OK, No = Cancel)", vbOKCancel + vbQuestion, "Select File Types")
-    If answer = vbOK Then selectedTypes.Add "excel"
+    If convertExcel Then selectedTypes.Add "excel"
+    If convertWord Then selectedTypes.Add "word"
+    If convertPPT Then selectedTypes.Add "ppt"
     
-    answer = MsgBox("Convert Word files? (Yes = OK, No = Cancel)", vbOKCancel + vbQuestion, "Select File Types")
-    If answer = vbOK Then selectedTypes.Add "word"
-    
-    answer = MsgBox("Convert PowerPoint files? (Yes = OK, No = Cancel)", vbOKCancel + vbQuestion, "Select File Types")
-    If answer = vbOK Then selectedTypes.Add "ppt"
-    
-    If selectedTypes.count = 0 Then
-        MsgBox "No file types selected. Exiting.", vbExclamation
-        Exit Sub
-    End If
-    
-    ' Start processing with progress indicator
-    Application.StatusBar = "Starting conversion..."
     Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.StatusBar = "Initializing..."
     
-    ProcessFolder fso.GetFolder(inputFolder), outputFolder, selectedTypes
+    Dim wordApp As Object, pptApp As Object
     
-    Application.StatusBar = False
-    Application.ScreenUpdating = True
-    
-    MsgBox "Conversion complete!", vbInformation
-End Sub
-
-Sub ProcessFolder(folder As Object, outputFolder As String, selectedTypes As Collection)
-    Dim file As Object, subFolder As Object
-    Dim totalFiles As Long, processedFiles As Long
-    
-    totalFiles = CountFiles(folder, selectedTypes)
-    processedFiles = 0
-    
-    Dim excelApp As Object, wordApp As Object, pptApp As Object
-    Dim wb As Workbook, doc As Object, ppt As Object
-    Dim pdfPath As String
-    
-    ' Initialize apps only if needed
     On Error Resume Next
+    ' Open Word if needed
     If CollectionContains(selectedTypes, "word") Then
         Set wordApp = GetObject(, "Word.Application")
         If Err.Number <> 0 Then Set wordApp = CreateObject("Word.Application")
@@ -76,6 +34,7 @@ Sub ProcessFolder(folder As Object, outputFolder As String, selectedTypes As Col
     End If
     Err.Clear
     
+    ' Open PowerPoint if needed
     If CollectionContains(selectedTypes, "ppt") Then
         Set pptApp = GetObject(, "PowerPoint.Application")
         If Err.Number <> 0 Then Set pptApp = CreateObject("PowerPoint.Application")
@@ -84,13 +43,35 @@ Sub ProcessFolder(folder As Object, outputFolder As String, selectedTypes As Col
     Err.Clear
     On Error GoTo 0
     
-    ' Process files in current folder
+    ' Start recursive processing
+    ProcessFolder fso.GetFolder(inputFolder), outputFolder, selectedTypes, wordApp, pptApp, frm
+    
+    ' Cleanup
+    If Not wordApp Is Nothing Then wordApp.Quit
+    If Not pptApp Is Nothing Then pptApp.Quit
+    
+    Application.StatusBar = False
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+End Sub
+
+Private Sub ProcessFolder(folder As Object, outputFolder As String, selectedTypes As Collection, _
+                          wordApp As Object, pptApp As Object, frm As Object)
+    Dim file As Object, subFolder As Object
+    Dim wb As Workbook, doc As Object, ppt As Object
+    Dim pdfPath As String
+    Dim totalFiles As Long, processedFiles As Long
+    
+    totalFiles = CountFiles(folder, selectedTypes)
+    processedFiles = 0
+    
     For Each file In folder.Files
         Dim ext As String
         ext = LCase(fso.GetExtensionName(file.Name))
         
         If CollectionContains(selectedTypes, "excel") And ext Like "xls*" Then
-            Application.StatusBar = "Converting Excel: " & file.Name & " (" & processedFiles & "/" & totalFiles & ")"
+            frm.lblStatus.Caption = "Converting Excel: " & file.Name
+            frm.Repaint
             Set wb = Workbooks.Open(file.Path, ReadOnly:=True)
             pdfPath = outputFolder & fso.GetBaseName(file.Name) & ".pdf"
             wb.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath
@@ -98,7 +79,8 @@ Sub ProcessFolder(folder As Object, outputFolder As String, selectedTypes As Col
             processedFiles = processedFiles + 1
         
         ElseIf CollectionContains(selectedTypes, "word") And ext Like "doc*" Then
-            Application.StatusBar = "Converting Word: " & file.Name & " (" & processedFiles & "/" & totalFiles & ")"
+            frm.lblStatus.Caption = "Converting Word: " & file.Name
+            frm.Repaint
             Set doc = wordApp.Documents.Open(file.Path, ReadOnly:=True)
             pdfPath = outputFolder & fso.GetBaseName(file.Name) & ".pdf"
             doc.ExportAsFixedFormat OutputFileName:=pdfPath, ExportFormat:=17
@@ -106,29 +88,23 @@ Sub ProcessFolder(folder As Object, outputFolder As String, selectedTypes As Col
             processedFiles = processedFiles + 1
         
         ElseIf CollectionContains(selectedTypes, "ppt") And ext Like "ppt*" Then
-            Application.StatusBar = "Converting PowerPoint: " & file.Name & " (" & processedFiles & "/" & totalFiles & ")"
+            frm.lblStatus.Caption = "Converting PowerPoint: " & file.Name
+            frm.Repaint
             Set ppt = pptApp.Presentations.Open(file.Path, WithWindow:=msoFalse)
             pdfPath = outputFolder & fso.GetBaseName(file.Name) & ".pdf"
-            ppt.SaveAs pdfPath, 32 ' 32 = ppSaveAsPDF
+            ppt.SaveAs pdfPath, 32 ' ppSaveAsPDF
             ppt.Close
             processedFiles = processedFiles + 1
         End If
     Next file
     
-    ' Process subfolders recursively
     For Each subFolder In folder.SubFolders
-        ProcessFolder subFolder, outputFolder, selectedTypes
+        ProcessFolder subFolder, outputFolder, selectedTypes, wordApp, pptApp, frm
     Next subFolder
     
-    ' Cleanup
-    If Not wordApp Is Nothing Then wordApp.Quit
-    If Not pptApp Is Nothing Then pptApp.Quit
-    
-    Application.StatusBar = False
 End Sub
 
-' Helper to count files to process for progress
-Function CountFiles(folder As Object, selectedTypes As Collection) As Long
+Private Function CountFiles(folder As Object, selectedTypes As Collection) As Long
     Dim count As Long
     Dim file As Object, subFolder As Object
     Dim ext As String
@@ -150,8 +126,7 @@ Function CountFiles(folder As Object, selectedTypes As Collection) As Long
     CountFiles = count
 End Function
 
-' Helper function to check if collection contains a value
-Function CollectionContains(col As Collection, val As String) As Boolean
+Private Function CollectionContains(col As Collection, val As String) As Boolean
     Dim itm As Variant
     On Error Resume Next
     For Each itm In col
@@ -163,4 +138,23 @@ Function CollectionContains(col As Collection, val As String) As Boolean
     CollectionContains = False
 End Function
 
+Sub openform()
+frmConvertPDF.Show
+End Sub
+Sub OpenFolder()
+Dim folderPath As String
+folderPath = txtOutputFolder.Text
+    If folderPath = "" Then
+        MsgBox "Folder path is empty!", vbExclamation
+        Exit Sub
+    End If
+    
+    If Dir(folderPath, vbDirectory) = "" Then
+        MsgBox "Folder does not exist: " & folderPath, vbExclamation
+        Exit Sub
+    End If
+    
+    ' Use Shell to open folder in Explorer
+    
+End Sub
 
