@@ -1,6 +1,6 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} frmConvertPDF 
-   Caption         =   "Convert Office Files to PDF V1"
+   Caption         =   "Convert Office Files to PDF V1 - By Mayur S"
    ClientHeight    =   4908
    ClientLeft      =   108
    ClientTop       =   456
@@ -25,6 +25,8 @@ Private Sub btnBrowseInput_Click()
             txtInputFolder.Text = .SelectedItems(1)
         End If
     End With
+    MsgBox "Thank you. Visit Github Mayur88888888 for many such tools", vbInformation, "Thanks for using this Tool Developed by Mayur S"
+    
 End Sub
 
 Private Sub btnBrowseOutput_Click()
@@ -36,6 +38,7 @@ Private Sub btnBrowseOutput_Click()
             txtOutputFolder.Text = .SelectedItems(1)
         End If
     End With
+    MsgBox "Thank you. Visit Github Mayur88888888 for many such tools", vbInformation, "Thanks for using this Tool Developed by Mayur S"
 End Sub
 
 Private Sub btnStart_Click()
@@ -64,6 +67,9 @@ Private Sub btnStart_Click()
     Unload Me
     
     Shell "explorer.exe """ & txtOutputFolder.Text & """", vbNormalFocus
+    
+    
+MsgBox "Thank you. Visit Github Mayur88888888 for many such tools", vbInformation, "Thanks for using this Tool Developed by Mayur S"
     
     
 End Sub
